@@ -1,6 +1,6 @@
 # Obsidian Memory Provider
 
-Persists Hermes Agent memory as plain Markdown notes inside a local
+Persists the agent's memory as plain Markdown notes inside a local
 [Obsidian](https://obsidian.md) vault. Local-first: no server, no API key,
 no network calls, no per-request cost. Your memory is your vault — readable,
 editable, linkable, and synced however you already sync it (Obsidian Sync,
@@ -23,31 +23,49 @@ memory:
 plugins:
   obsidian-memory:
     vault_path: ~/Documents/MyVault   # required — the folder Obsidian opens
-    folder: Hermes                    # subfolder Hermes writes into
-    session_notes: true               # write a log note at session end
+    folder: Iris                      # subfolder the agent writes into
+    session_notes: true               # write a note at session end
+    session_summary: auto             # auto = LLM summary w/ digest fallback, off = digest only
+    daily_notes: false                # opt-in: append a session section to your daily note
+    daily_notes_folder: ""            # vault-relative daily notes folder ("" = vault root)
+    daily_note_format: "%Y-%m-%d"     # daily note filename date format
+    auto_link: true                   # wikilink existing note titles in written notes
 ```
 
 ## Vault layout
 
-Everything Hermes writes lives under the configured subfolder (default `Hermes/`):
+Everything the agent writes lives under the configured subfolder (default `Iris/`):
 
 ```
 MyVault/
-└── Hermes/
-    ├── Memory.md            # mirrored built-in MEMORY.md entries
-    ├── User Profile.md      # mirrored built-in USER.md entries
+└── Iris/
+    ├── Memory.md            # live mirror of the built-in MEMORY.md
+    ├── User Profile.md      # live mirror of the built-in USER.md
     ├── Notes/               # notes the agent creates via the obsidian tool
     │   └── Project Iris.md
-    └── Sessions/            # end-of-session conversation logs
+    └── Sessions/            # end-of-session notes (LLM summary + transcript)
         └── 2026-07-02 1430 a1b2c3.md
 ```
 
 ## Write scope (safety)
 
 - **Read/search:** the whole vault (minus `.obsidian/`, `.trash/`, dotfiles).
-- **Write/append/delete:** only inside the `Hermes/` subfolder. The agent can
+- **Write/append/delete:** only inside the `Iris/` subfolder. The agent can
   never modify or delete your own notes.
+- **One opt-in exception:** with `daily_notes: true`, a clearly-marked
+  `## Iris — HH:MM session` section is appended to the day's daily note.
 - Path traversal (`../`) out of the vault is rejected.
+- All writes are atomic (temp file + rename) so vault sync (Obsidian Sync,
+  Syncthing, iCloud) never sees a half-written note.
+
+## Search: FTS5 index
+
+Search and prefetch are backed by an incremental SQLite FTS5 index stored at
+`$HERMES_HOME/obsidian_index.db` — **outside** the vault, so it never shows
+up in Obsidian or your sync. A cheap mtime walk re-reads only changed files
+(throttled to one pass per 20 s); the agent's own writes are indexed
+immediately. Vaults of tens of thousands of notes stay fast. If your SQLite
+lacks FTS5, the provider transparently falls back to a bounded text scan.
 
 ## Tool
 
@@ -55,26 +73,36 @@ One tool, `obsidian`, with six actions:
 
 | Action | Scope | Description |
 |--------|-------|-------------|
-| `search` | vault | Bounded keyword search (500 files / 1.5 s budget) |
+| `search` | vault | Full-text search (FTS5 index, scan fallback) |
 | `read` | vault | Read a note by vault-relative path |
 | `list` | vault | List notes in the vault or a subfolder |
-| `write` | Hermes folder | Create/overwrite a note (frontmatter + tags) |
-| `append` | Hermes folder | Append to a note (creates if missing) |
-| `delete` | Hermes folder | Delete an agent-created note |
+| `write` | Iris folder | Create/overwrite a note (frontmatter + tags) |
+| `append` | Iris folder | Append to a note (creates if missing) |
+| `delete` | Iris folder | Delete an agent-created note |
 
 ## Behavior
 
-- **Prefetch:** before each turn, a background keyword search injects the top
-  3 relevant note snippets as context.
-- **Mirroring:** every `add` from the built-in memory tool is appended (with a
-  date stamp) to `Memory.md` or `User Profile.md`. `replace`/`remove` are not
-  mirrored — the vault is an append-only journal; prune it in Obsidian.
+- **Prefetch:** before each turn, a background search injects the top 3
+  relevant note snippets as context.
+- **Mirroring:** on every built-in memory write (`add`, `replace`, **and**
+  `remove`), `Iris/Memory.md` / `Iris/User Profile.md` are regenerated from
+  the built-in store's on-disk state — the vault mirror never drifts or
+  accumulates stale entries.
 - **Session notes:** at real session boundaries (CLI exit, `/reset`, gateway
-  expiry) a digest note with truncated exchanges is written to `Sessions/`.
-  Disable with `session_notes: false`.
+  expiry) a note is written to `Sessions/`. With `session_summary: auto`
+  (default), the auxiliary LLM produces a 3–6 bullet summary (decisions,
+  facts, follow-ups); if the call fails the note falls back to a plain
+  transcript digest. Disable notes entirely with `session_notes: false`.
+- **Daily notes:** with `daily_notes: true`, the session summary is also
+  appended to your Obsidian daily note, wikilinked to the full session note.
+- **Auto-linking:** titles of existing vault notes mentioned in agent-written
+  content become `[[wikilinks]]` automatically (whole-word matches, longest
+  first, never inside code fences or existing links, max 8 per note, titles
+  ≥ 4 chars). Disable with `auto_link: false`.
 - **Cron/subagents:** non-primary agent contexts never write to the vault.
 
 ## Backup
 
 The vault is intentionally **not** included in `hermes backup` — it's your
-document store, already covered by your own vault sync/backup strategy.
+document store, already covered by your own vault sync/backup strategy. The
+FTS index is disposable (it rebuilds itself from the vault).

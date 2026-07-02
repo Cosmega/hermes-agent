@@ -6,10 +6,27 @@ self-hosted personal AI agent:
 | Pillar | How |
 |--------|-----|
 | **Unlimited credits** | Inference runs on your own hardware (Ollama, LM Studio, vLLM, llama.cpp). No API keys, no per-token billing, no rate limits but your GPU. |
-| **Secure conversations** | Everything stays on your machine — model, session history, memory. Gateway hardened with user allowlists, DM pairing, and dangerous-command approval. Signal supported for end-to-end encrypted messaging. |
-| **Memory in Obsidian** | The `obsidian` memory provider persists the agent's memory as plain Markdown notes in your vault — readable, editable, wikilinked into your knowledge graph. |
+| **Secure conversations** | Everything stays on your machine — model, session history, memory, even voice transcription. Gateway hardened with user allowlists, DM pairing, and dangerous-command approval. Signal supported for end-to-end encrypted messaging. |
+| **Memory in Obsidian** | The `obsidian` memory provider persists the agent's memory as plain Markdown notes in your vault — FTS5-indexed, LLM-summarized session notes, daily-note integration, auto-wikilinked into your knowledge graph. |
 
 No cloud service sees your prompts, your history, or your notes.
+
+---
+
+## Quick start (one command)
+
+With Hermes installed and an Obsidian vault on disk:
+
+```bash
+scripts/setup-iris.sh --vault ~/Documents/MyVault
+hermes    # fly.
+```
+
+The script pulls a local model through Ollama, points Hermes at it, enables
+manual approval for dangerous commands, activates Obsidian memory, and writes
+the Iris persona to `SOUL.md` (never overwriting an existing one). Re-run it
+any time — it's idempotent. `--dry-run` shows what it would do; `--skip-model`
+keeps your current provider. The sections below explain each piece.
 
 ---
 
@@ -17,11 +34,26 @@ No cloud service sees your prompts, your history, or your notes.
 
 Pick one local server. Hermes speaks to any OpenAI-compatible endpoint.
 
+### Which model fits your hardware?
+
+Rough guide for quantized (Q4) GGUF models — the common case on Ollama:
+
+| VRAM / unified memory | Models that run comfortably | Notes |
+|---|---|---|
+| CPU only / ≤ 4 GB | `qwen3:1.7b`, `llama3.2:3b` | Fine for chat + memory; weak at tool-heavy work |
+| 8 GB | `hermes3:8b`, `qwen3:8b`, `llama3.1:8b` | The sweet spot for Iris on a gaming GPU |
+| 12–16 GB | `qwen3:14b`, `mistral-small3.1` | Noticeably better tool-calling reliability |
+| 24 GB | `hermes3:70b` (heavily quantized), `qwen3:32b`, `gemma3:27b` | Strong daily driver |
+| 48 GB+ / Mac Studio | `hermes3:70b`, `llama3.3:70b`, `deepseek-r1:70b` | Cloud-model territory, fully local |
+
+Tool calling is what an agent stresses most — when in doubt, prefer the
+larger model at a lower quant over the smaller model at full precision.
+
 ### Ollama (easiest)
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
-ollama pull hermes3          # or qwen3, llama3.3, deepseek-r1, …
+ollama pull hermes3          # or any model from the table above
 ```
 
 `~/.hermes/config.yaml`:
@@ -83,6 +115,33 @@ For messaging access, run `hermes gateway setup` and:
 - **Container isolation** — run the agent's shell in Docker
   (`terminal.backend: docker`) so tool calls can't touch the host.
 
+### Voice, fully local
+
+Voice memos from Telegram/Signal are transcribed with the built-in **local**
+STT provider (faster-whisper) — no audio ever leaves the machine:
+
+```yaml
+stt:
+  enabled: true
+  provider: "local"
+  local:
+    model: "base"      # tiny | base | small | medium | large-v3 | turbo
+```
+
+### Encryption at rest
+
+Iris keeps everything under `~/.hermes/` and your vault — in plaintext, like
+any local app. If the machine is shared, portable, or a VPS, encrypt the
+storage layer underneath rather than per-file:
+
+- **Laptop:** full-disk encryption (LUKS on Linux, FileVault on macOS) covers
+  both `~/.hermes/` and the vault with zero config.
+- **VPS / always-on box:** put `~/.hermes/` (and the vault) on an encrypted
+  directory, e.g. [gocryptfs](https://nuetzlich.net/gocryptfs/):
+  `gocryptfs ~/.hermes.enc ~/.hermes` — mounted at boot, opaque at rest.
+- `hermes backup` archives can be piped through `age` before leaving the
+  machine: `hermes backup && age -p backup.tar.gz > backup.tar.gz.age`.
+
 Full reference: [Security guide](https://hermes-agent.nousresearch.com/docs/user-guide/security).
 
 ## 3. Memory in Obsidian
@@ -103,28 +162,37 @@ memory:
 plugins:
   obsidian-memory:
     vault_path: ~/Documents/MyVault
-    folder: Hermes
+    folder: Iris                # the agent's subfolder in your vault
     session_notes: true
+    session_summary: auto       # LLM-written session summaries (digest fallback)
+    daily_notes: false          # opt-in: session recap in your daily note
+    auto_link: true             # auto-[[wikilink]] known note titles
 ```
 
 What you get inside the vault:
 
 ```
 MyVault/
-└── Hermes/
-    ├── Memory.md          # everything the agent chooses to remember
-    ├── User Profile.md    # what it learns about you
+└── Iris/
+    ├── Memory.md          # live mirror of everything Iris remembers
+    ├── User Profile.md    # what it learns about you (kept exactly in sync)
     ├── Notes/             # notes it writes (frontmatter, #tags, [[wikilinks]])
-    └── Sessions/          # end-of-session conversation digests
+    └── Sessions/          # end-of-session notes: LLM summary + transcript
 ```
 
-The agent reads and searches your **whole vault** (so it can answer from your
-own notes) but writes **only inside `Hermes/`** — your notes are never touched.
+- Iris reads and searches your **whole vault** (backed by an incremental
+  FTS5 index kept outside the vault) but writes **only inside `Iris/`** —
+  your notes are never touched. The one opt-in exception: `daily_notes: true`
+  appends a marked `## Iris — HH:MM session` recap to your daily note.
+- The `Memory.md` / `User Profile.md` mirrors are regenerated on every
+  memory write — adds, edits, and removals all stay in sync.
+- Notes Iris writes auto-link to existing notes in your vault, so the graph
+  view fills in by itself.
 
 ## 4. The Iris persona (optional)
 
-`SOUL.md` is the agent's identity — slot #1 of the system prompt. To name
-your instance Iris, put this in `~/.hermes/SOUL.md`:
+`SOUL.md` is the agent's identity — slot #1 of the system prompt. The setup
+script installs it for you; to do it by hand, put this in `~/.hermes/SOUL.md`:
 
 ```markdown
 # Iris
@@ -142,7 +210,7 @@ Persist durable knowledge as linked notes so the knowledge graph deepens —
 like a rainbow, every note you leave should connect two points.
 ```
 
-## Quick start (all four pieces)
+## Manual setup (the script, unrolled)
 
 ```bash
 # 1. Install Hermes

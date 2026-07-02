@@ -5,29 +5,42 @@ vault. Everything is local-first: no server, no API key, no network.
 The vault stays a normal Obsidian vault — notes are readable, editable,
 linkable, and sync however the user already syncs their vault.
 
-Vault layout (all under the configured subfolder, default "Hermes"):
-  <folder>/Memory.md           — mirrored built-in MEMORY.md entries
-  <folder>/User Profile.md     — mirrored built-in USER.md entries
+Vault layout (all under the configured subfolder, default "Iris"):
+  <folder>/Memory.md           — mirror of the built-in MEMORY.md
+  <folder>/User Profile.md     — mirror of the built-in USER.md
   <folder>/Notes/<Title>.md    — notes the agent creates via the tool
-  <folder>/Sessions/<date>.md  — end-of-session conversation logs
+  <folder>/Sessions/<date>.md  — end-of-session notes (LLM summary when
+                                 available, digest otherwise)
 
 Write scope: the agent can READ and SEARCH the whole vault, but can only
-WRITE and DELETE inside the configured Hermes subfolder. User notes are
-never modified.
+WRITE and DELETE inside the configured subfolder. User notes are never
+modified — the single opt-in exception is ``daily_notes``, which appends
+a clearly-marked session section to the day's daily note.
+
+Search is backed by an incremental SQLite FTS5 index stored under
+HERMES_HOME (never inside the vault); it falls back to a bounded text
+scan when FTS5 is unavailable.
 
 Config in $HERMES_HOME/config.yaml:
   plugins:
     obsidian-memory:
       vault_path: ~/Documents/MyVault   # required — path to the vault
-      folder: Hermes                    # subfolder Hermes writes into
+      folder: Iris                      # subfolder the agent writes into
       session_notes: true               # write a note at session end
+      session_summary: auto             # auto = LLM summary w/ digest fallback, off = digest
+      daily_notes: false                # append session section to the daily note
+      daily_notes_folder: ""            # vault-relative daily notes folder ("" = root)
+      daily_note_format: "%Y-%m-%d"     # daily note filename date format
+      auto_link: true                   # wikilink existing note titles in written notes
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import tempfile
 import threading
 import time
 from datetime import datetime
@@ -38,16 +51,29 @@ from agent.memory_provider import MemoryProvider
 from hermes_cli.config import cfg_get
 from tools.registry import tool_error
 
+from .index import VaultIndex
+
 logger = logging.getLogger(__name__)
 
-# Bounds for vault scans so prefetch/search stay fast on large vaults.
+# Bounds for the fallback vault scan (used only when FTS5 is unavailable).
 _MAX_SCAN_FILES = 500
 _MAX_FILE_BYTES = 262_144  # 256 KB — skip anything bigger
 _SCAN_BUDGET_SECONDS = 1.5
 _SKIP_DIRS = {".obsidian", ".trash", ".git", ".sync-conflicts"}
 
+# Auto-linking limits: don't turn a note into link soup.
+_AUTO_LINK_MAX = 8
+_AUTO_LINK_MIN_TITLE_LEN = 4
+
 # Characters Obsidian forbids in note titles, plus path separators.
 _TITLE_SANITIZE_RE = re.compile(r'[\\/:*?"<>|#^\[\]]')
+
+_SUMMARY_SYSTEM_PROMPT = (
+    "You summarize a conversation between a user and their assistant Iris "
+    "into a compact Obsidian note. Reply with Markdown only: 3-6 bullet "
+    "points covering decisions, facts learned, and follow-ups. No preamble, "
+    "no heading, no code fences."
+)
 
 
 OBSIDIAN_TOOL_SCHEMA = {
@@ -118,19 +144,41 @@ def _as_bool(value: Any, default: bool = True) -> bool:
     return bool(value)
 
 
+def _atomic_write(path: Path, text: str) -> None:
+    """Write via temp file + rename so vault sync never sees a half-written note."""
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".iris-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except OSError:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 class ObsidianMemoryProvider(MemoryProvider):
     """Markdown-note memory backed by a local Obsidian vault."""
 
     def __init__(self, config: dict | None = None):
         self._config = config if config is not None else _load_plugin_config()
         self._vault: Optional[Path] = None
-        self._folder_name = str(self._config.get("folder", "Hermes")).strip() or "Hermes"
+        self._folder_name = str(self._config.get("folder", "Iris")).strip() or "Iris"
         self._session_notes = _as_bool(self._config.get("session_notes", True))
+        self._session_summary = str(self._config.get("session_summary", "auto")).strip().lower()
+        self._daily_notes = _as_bool(self._config.get("daily_notes", False), default=False)
+        self._daily_notes_folder = str(self._config.get("daily_notes_folder", "")).strip().strip("/")
+        self._daily_note_format = str(self._config.get("daily_note_format", "%Y-%m-%d"))
+        self._auto_link_enabled = _as_bool(self._config.get("auto_link", True))
         self._session_id = ""
+        self._write_enabled = True
         self._write_lock = threading.Lock()
         self._prefetch_lock = threading.Lock()
         self._prefetch_query = ""
         self._prefetch_result = ""
+        self._index: Optional[VaultIndex] = None
 
     @property
     def name(self) -> str:
@@ -160,13 +208,25 @@ class ObsidianMemoryProvider(MemoryProvider):
             },
             {
                 "key": "folder",
-                "description": "Subfolder inside the vault where Hermes writes its notes",
-                "default": "Hermes",
+                "description": "Subfolder inside the vault where the agent writes its notes",
+                "default": "Iris",
             },
             {
                 "key": "session_notes",
-                "description": "Write a conversation log note at the end of each session",
+                "description": "Write a conversation note at the end of each session",
                 "default": "true",
+                "choices": ["true", "false"],
+            },
+            {
+                "key": "session_summary",
+                "description": "Summarize sessions with the LLM (falls back to a digest)",
+                "default": "auto",
+                "choices": ["auto", "off"],
+            },
+            {
+                "key": "daily_notes",
+                "description": "Also append a session section to your Obsidian daily note",
+                "default": "false",
                 "choices": ["true", "false"],
             },
         ]
@@ -202,11 +262,29 @@ class ObsidianMemoryProvider(MemoryProvider):
         agent_context = kwargs.get("agent_context", "primary")
         self._write_enabled = agent_context == "primary"
         self._hermes_dir.mkdir(parents=True, exist_ok=True)
+        # The FTS index lives under HERMES_HOME, never inside the vault.
+        hermes_home = kwargs.get("hermes_home")
+        if not hermes_home:
+            try:
+                from hermes_constants import get_hermes_home
+                hermes_home = str(get_hermes_home())
+            except Exception:
+                hermes_home = None
+        if hermes_home:
+            try:
+                index = VaultIndex(str(Path(hermes_home) / "obsidian_index.db"), self._vault)
+                self._index = index if index.available else None
+            except Exception as e:
+                logger.debug("Vault index init failed, using scan fallback: %s", e)
+                self._index = None
 
     def on_session_switch(self, new_session_id: str, **kwargs) -> None:
         self._session_id = new_session_id
 
     def shutdown(self) -> None:
+        if self._index:
+            self._index.close()
+            self._index = None
         self._vault = None
 
     # -- Paths -----------------------------------------------------------------
@@ -230,7 +308,7 @@ class ObsidianMemoryProvider(MemoryProvider):
         return candidate
 
     def _resolve_in_hermes_dir(self, rel_path: str) -> Path:
-        """Resolve a path and require it to be inside the Hermes folder."""
+        """Resolve a path and require it to be inside the agent's folder."""
         candidate = self._resolve_in_vault(rel_path)
         hermes = self._hermes_dir.resolve()
         if candidate != hermes and hermes not in candidate.parents:
@@ -244,6 +322,11 @@ class ObsidianMemoryProvider(MemoryProvider):
             return str(path.resolve().relative_to(self._vault.resolve()))
         except ValueError:
             return str(path)
+
+    def _index_note(self, path: Path) -> None:
+        """Reflect one of our own writes/deletes in the search index right away."""
+        if self._index:
+            self._index.upsert(self._rel(path))
 
     # -- System prompt / prefetch ------------------------------------------------
 
@@ -287,11 +370,11 @@ class ObsidianMemoryProvider(MemoryProvider):
         with self._prefetch_lock:
             if self._prefetch_query == query and self._prefetch_result:
                 return self._prefetch_result
-        # No cached background result — do a bounded synchronous scan.
+        # No cached background result — do a bounded synchronous search.
         try:
             return self._format_search_context(query)
         except Exception as e:
-            logger.debug("Obsidian prefetch scan failed: %s", e)
+            logger.debug("Obsidian prefetch search failed: %s", e)
             return ""
 
     def _format_search_context(self, query: str) -> str:
@@ -300,7 +383,8 @@ class ObsidianMemoryProvider(MemoryProvider):
             return ""
         lines = ["## Obsidian Memory (relevant notes)"]
         for hit in hits:
-            lines.append(f"### [[{hit['path']}]]")
+            link = hit["path"][:-3] if hit["path"].endswith(".md") else hit["path"]
+            lines.append(f"### [[{link}]]")
             lines.append(hit["snippet"])
         return "\n".join(lines)
 
@@ -376,18 +460,20 @@ class ObsidianMemoryProvider(MemoryProvider):
         content = args.get("content", "")
         if not args.get("title") or not content:
             return tool_error("write/append require 'title' and 'content'")
+        content = self._auto_link(content, own_title=title)
         path = self._resolve_in_hermes_dir(f"{self._folder_name}/Notes/{title}.md")
         path.parent.mkdir(parents=True, exist_ok=True)
         with self._write_lock:
             if overwrite or not path.exists():
                 tags = args.get("tags") or []
                 body = self._frontmatter(tags) + content.rstrip() + "\n"
-                path.write_text(body, encoding="utf-8")
+                _atomic_write(path, body)
                 created = True
             else:
-                with open(path, "a", encoding="utf-8") as f:
-                    f.write("\n" + content.rstrip() + "\n")
+                existing = path.read_text(encoding="utf-8", errors="replace")
+                _atomic_write(path, existing.rstrip() + "\n\n" + content.rstrip() + "\n")
                 created = False
+        self._index_note(path)
         return json.dumps({"path": self._rel(path), "status": "written" if created else "appended"})
 
     def _tool_delete(self, args: dict) -> str:
@@ -398,18 +484,61 @@ class ObsidianMemoryProvider(MemoryProvider):
         if not path.exists() or not path.is_file():
             return tool_error(f"Note not found: {rel}")
         path.unlink()
+        self._index_note(path)
         return json.dumps({"path": rel, "status": "deleted"})
 
     @staticmethod
     def _frontmatter(tags: List[str]) -> str:
         clean_tags = [re.sub(r"[^\w/-]", "", str(t)) for t in tags if str(t).strip()]
-        lines = ["---", f"created: {datetime.now().strftime('%Y-%m-%d %H:%M')}", "source: hermes"]
+        lines = ["---", f"created: {datetime.now().strftime('%Y-%m-%d %H:%M')}", "source: iris"]
         if clean_tags:
             lines.append("tags: [" + ", ".join(clean_tags) + "]")
         lines.append("---")
         return "\n".join(lines) + "\n\n"
 
-    # -- Vault scanning ------------------------------------------------------------
+    # -- Auto-linking -----------------------------------------------------------
+
+    def _auto_link(self, content: str, *, own_title: str = "") -> str:
+        """Wikilink mentions of existing note titles so the graph densifies.
+
+        Conservative: whole-word matches only, longest titles first, never
+        inside code fences or existing links, capped at _AUTO_LINK_MAX links.
+        """
+        if not self._auto_link_enabled or not self._index:
+            return content
+        try:
+            titles = self._index.titles()
+        except Exception:
+            return content
+        candidates = sorted(
+            (t for t in titles
+             if len(t) >= _AUTO_LINK_MIN_TITLE_LEN and t != own_title),
+            key=len, reverse=True,
+        )
+        # Split on code fences; only even segments are prose.
+        segments = content.split("```")
+        added = 0
+        for title in candidates:
+            if added >= _AUTO_LINK_MAX:
+                break
+            if f"[[{title}" in content:
+                continue
+            pattern = re.compile(
+                r"(?<!\[)\b" + re.escape(title) + r"\b(?!\]|\|)", re.IGNORECASE
+            )
+            for i in range(0, len(segments), 2):
+                m = pattern.search(segments[i])
+                if not m:
+                    continue
+                matched = m.group(0)
+                link = f"[[{title}]]" if matched == title else f"[[{title}|{matched}]]"
+                segments[i] = segments[i][:m.start()] + link + segments[i][m.end():]
+                content = "```".join(segments)
+                added += 1
+                break
+        return content
+
+    # -- Vault scanning (fallback when FTS5 is unavailable) -----------------------
 
     def _iter_vault_files(self, root: Optional[Path] = None, limit: int = _MAX_SCAN_FILES):
         """Yield markdown files under root (default: vault), bounded and safe."""
@@ -436,7 +565,16 @@ class ObsidianMemoryProvider(MemoryProvider):
                         return
 
     def _search_vault(self, query: str, limit: int = 10) -> List[Dict[str, str]]:
-        """Bounded keyword search over the vault's markdown files."""
+        """Search the vault: FTS5 index when available, bounded scan otherwise."""
+        if self._index:
+            self._index.refresh()
+            hits = self._index.search(query, limit=limit)
+            if hits or self._index.available:
+                return hits
+        return self._scan_search(query, limit=limit)
+
+    def _scan_search(self, query: str, limit: int = 10) -> List[Dict[str, str]]:
+        """Bounded keyword scan over the vault's markdown files."""
         words = [w for w in re.findall(r"\w{3,}", query.lower())][:12]
         if not words:
             return []
@@ -491,24 +629,50 @@ class ObsidianMemoryProvider(MemoryProvider):
         content: str,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
-        if not self._vault or not getattr(self, "_write_enabled", True):
+        if not self._vault or not self._write_enabled:
             return
-        if action != "add" or not content:
+        if action not in ("add", "replace", "remove"):
             return
-        note = "User Profile.md" if target == "user" else "Memory.md"
         try:
-            path = self._hermes_dir / note
-            path.parent.mkdir(parents=True, exist_ok=True)
-            stamp = datetime.now().strftime("%Y-%m-%d")
-            with self._write_lock:
-                new_file = not path.exists()
-                with open(path, "a", encoding="utf-8") as f:
-                    if new_file:
-                        title = "User Profile" if target == "user" else "Memory"
-                        f.write(f"# {title}\n\nMirrored from Hermes built-in memory.\n\n")
-                    f.write(f"- {stamp} — {content.strip()}\n")
+            self._regenerate_mirror(target)
         except Exception as e:
             logger.debug("Obsidian memory mirror failed: %s", e)
+
+    def _regenerate_mirror(self, target: str) -> None:
+        """Rebuild the vault mirror note from the built-in store's on-disk state.
+
+        The hook fires after the built-in tool has saved, so MEMORY.md/USER.md
+        are current. Regenerating (instead of appending) keeps the vault note
+        exactly in sync through replace/remove, not just add.
+        """
+        from tools.memory_tool import ENTRY_DELIMITER, get_memory_dir
+
+        source = get_memory_dir() / ("USER.md" if target == "user" else "MEMORY.md")
+        entries: List[str] = []
+        if source.exists():
+            raw = source.read_text(encoding="utf-8", errors="replace")
+            entries = [e.strip() for e in raw.split(ENTRY_DELIMITER) if e.strip()]
+
+        note = "User Profile.md" if target == "user" else "Memory.md"
+        title = "User Profile" if target == "user" else "Memory"
+        path = self._hermes_dir / note
+        if not entries and not path.exists():
+            return
+        lines = [
+            f"# {title}",
+            "",
+            f"Mirror of Iris's built-in memory ({source.name}). Regenerated on every "
+            "memory write — prune entries by asking Iris, not by editing this file.",
+            "",
+        ]
+        for entry in entries:
+            lines.append("- " + entry.replace("\n", "\n  "))
+        if not entries:
+            lines.append("_(empty)_")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with self._write_lock:
+            _atomic_write(path, "\n".join(lines) + "\n")
+        self._index_note(path)
 
     # -- Session notes ------------------------------------------------------------------
 
@@ -525,41 +689,112 @@ class ObsidianMemoryProvider(MemoryProvider):
         pass
 
     def on_session_end(self, messages: List[Dict[str, Any]]) -> None:
-        if not self._vault or not self._session_notes:
-            return
-        if not getattr(self, "_write_enabled", True):
+        if not self._vault or not self._write_enabled:
             return
         exchanges = self._extract_exchanges(messages)
         if not exchanges:
             return
+        summary = self._summarize_session(exchanges)
+        session_link = ""
+        if self._session_notes:
+            try:
+                session_link = self._write_session_note(exchanges, summary)
+            except Exception as e:
+                logger.debug("Obsidian session note failed: %s", e)
+        if self._daily_notes:
+            try:
+                self._append_daily_note(exchanges, summary, session_link)
+            except Exception as e:
+                logger.debug("Obsidian daily note failed: %s", e)
+
+    def _write_session_note(self, exchanges: List[tuple], summary: str) -> str:
+        """Write the Sessions/ note; returns its vault-relative link target."""
+        stamp = datetime.now()
+        sid = re.sub(r"[^\w-]", "", (self._session_id or "session"))[:24]
+        title = f"{stamp.strftime('%Y-%m-%d %H%M')} {sid}"
+        path = self._hermes_dir / "Sessions" / f"{title}.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lines = [
+            "---",
+            f"created: {stamp.strftime('%Y-%m-%d %H:%M')}",
+            "source: iris",
+            "tags: [iris/session]",
+            "---",
+            "",
+            f"# Session {stamp.strftime('%Y-%m-%d %H:%M')}",
+            "",
+            f"{len(exchanges)} exchange(s). See also [[Memory]] and [[User Profile]].",
+            "",
+        ]
+        if summary:
+            lines += ["## Summary", "", summary.strip(), "", "## Transcript", ""]
+        max_exchanges = 10 if summary else 30
+        for user_text, assistant_text in exchanges[:max_exchanges]:
+            lines.append(f"## {self._first_line(user_text)}" if not summary
+                         else f"### {self._first_line(user_text)}")
+            lines.append(f"**User:** {self._clip(user_text)}")
+            lines.append("")
+            lines.append(f"**Iris:** {self._clip(assistant_text)}")
+            lines.append("")
+        with self._write_lock:
+            _atomic_write(path, "\n".join(lines))
+        self._index_note(path)
+        return self._rel(path)[:-3]  # strip .md for the wikilink
+
+    def _append_daily_note(
+        self, exchanges: List[tuple], summary: str, session_link: str
+    ) -> None:
+        """Append a marked session section to the day's daily note.
+
+        This is the single opt-in exception to the write scope: daily notes
+        live wherever the user keeps them (``daily_notes_folder``), and the
+        section is clearly attributed to Iris.
+        """
+        stamp = datetime.now()
+        name = stamp.strftime(self._daily_note_format) + ".md"
+        rel = f"{self._daily_notes_folder}/{name}" if self._daily_notes_folder else name
+        path = self._resolve_in_vault(rel)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        body = summary.strip() if summary else self._first_line(exchanges[0][0], 200)
+        section = [f"## Iris — {stamp.strftime('%H:%M')} session", "", body]
+        if session_link:
+            section += ["", f"Full note: [[{session_link}]]"]
+        existing = ""
+        if path.exists():
+            existing = path.read_text(encoding="utf-8", errors="replace").rstrip()
+        else:
+            existing = f"# {stamp.strftime(self._daily_note_format)}"
+        with self._write_lock:
+            _atomic_write(path, existing + "\n\n" + "\n".join(section) + "\n")
+
+    def _summarize_session(self, exchanges: List[tuple]) -> str:
+        """LLM summary via the auxiliary client; empty string on any failure."""
+        if self._session_summary != "auto":
+            return ""
+        transcript_parts = []
+        for user_text, assistant_text in exchanges[:20]:
+            transcript_parts.append(f"User: {self._clip(user_text, 800)}")
+            transcript_parts.append(f"Iris: {self._clip(assistant_text, 800)}")
+        transcript = "\n\n".join(transcript_parts)[:8000]
         try:
-            stamp = datetime.now()
-            sid = re.sub(r"[^\w-]", "", (self._session_id or "session"))[:24]
-            title = f"{stamp.strftime('%Y-%m-%d %H%M')} {sid}"
-            path = self._hermes_dir / "Sessions" / f"{title}.md"
-            path.parent.mkdir(parents=True, exist_ok=True)
-            lines = [
-                "---",
-                f"created: {stamp.strftime('%Y-%m-%d %H:%M')}",
-                "source: hermes",
-                "tags: [hermes/session]",
-                "---",
-                "",
-                f"# Session {stamp.strftime('%Y-%m-%d %H:%M')}",
-                "",
-                f"{len(exchanges)} exchange(s). See also [[Memory]] and [[User Profile]].",
-                "",
-            ]
-            for user_text, assistant_text in exchanges[:30]:
-                lines.append(f"## {self._first_line(user_text)}")
-                lines.append(f"**User:** {self._clip(user_text)}")
-                lines.append("")
-                lines.append(f"**Hermes:** {self._clip(assistant_text)}")
-                lines.append("")
-            with self._write_lock:
-                path.write_text("\n".join(lines), encoding="utf-8")
+            from agent.auxiliary_client import call_llm
+
+            response = call_llm(
+                messages=[
+                    {"role": "system", "content": _SUMMARY_SYSTEM_PROMPT},
+                    {"role": "user", "content": transcript},
+                ],
+                max_tokens=400,
+                temperature=0.2,
+                timeout=45,
+            )
+            text = (response.choices[0].message.content or "").strip()
+            # A summary longer than the transcript defeats the purpose.
+            if text and len(text) < len(transcript):
+                return text
         except Exception as e:
-            logger.debug("Obsidian session note failed: %s", e)
+            logger.debug("Session summary LLM call failed, using digest: %s", e)
+        return ""
 
     @staticmethod
     def _extract_exchanges(messages: List[Dict[str, Any]]) -> List[tuple]:

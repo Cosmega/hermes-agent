@@ -477,15 +477,23 @@ hermes config set memory.provider obsidian
 | Key | Default | Description |
 |-----|---------|-------------|
 | `vault_path` | — (required) | Path to your Obsidian vault |
-| `folder` | `Hermes` | Subfolder inside the vault Hermes writes into |
-| `session_notes` | `true` | Write a conversation log note at session end |
+| `folder` | `Iris` | Subfolder inside the vault the agent writes into |
+| `session_notes` | `true` | Write a conversation note at session end |
+| `session_summary` | `auto` | `auto` = LLM summary with digest fallback, `off` = digest only |
+| `daily_notes` | `false` | Opt-in: append a session section to your Obsidian daily note |
+| `daily_notes_folder` | `""` | Vault-relative daily notes folder (`""` = vault root) |
+| `daily_note_format` | `%Y-%m-%d` | Daily note filename date format |
+| `auto_link` | `true` | Wikilink existing note titles in agent-written notes |
 
 **Key features:**
-- **Write scoping** — the agent reads and searches the whole vault, but can only write/delete inside its own `Hermes/` subfolder. Your notes are never modified.
-- **Built-in memory mirroring** — every MEMORY.md / USER.md `add` is appended (date-stamped) to `Hermes/Memory.md` / `Hermes/User Profile.md` in the vault
-- **Session logs** — at session boundaries a digest note lands in `Hermes/Sessions/`, wikilinked to `[[Memory]]`
-- **Prefetch** — bounded background keyword search injects the top 3 relevant note snippets before each turn
-- Notes are written with frontmatter, `#tags`, and `[[wikilinks]]` so they participate in your Obsidian graph
+- **Write scoping** — the agent reads and searches the whole vault, but can only write/delete inside its own subfolder (default `Iris/`). Your notes are never modified; the single opt-in exception is the `daily_notes` session section.
+- **FTS5 search index** — incremental SQLite full-text index stored under `$HERMES_HOME` (never inside the vault); mtime-based reindex of changed files only, agent writes indexed immediately, bounded-scan fallback if FTS5 is unavailable
+- **Exact memory mirroring** — every MEMORY.md / USER.md write (`add`, `replace`, `remove`) regenerates `Iris/Memory.md` / `Iris/User Profile.md` from the built-in store's state, so the vault mirror never drifts
+- **LLM session summaries** — session notes lead with a 3–6 bullet summary produced by the auxiliary client, with a transcript-digest fallback when the model is unreachable
+- **Daily-note integration** — session summaries can append to your daily note, wikilinked to the full session note
+- **Auto-linking** — mentions of existing note titles in agent-written content become `[[wikilinks]]` (conservative: whole words, no code fences, capped)
+- **Atomic writes** — temp-file + rename so Obsidian Sync/Syncthing/iCloud never see half-written notes
+- **Prefetch** — background search injects the top 3 relevant note snippets before each turn
 
 See the [plugin README](https://github.com/NousResearch/hermes-agent/blob/main/plugins/memory/obsidian/README.md).
 
@@ -637,7 +645,7 @@ hermes memory setup
 | **Mem0** | Cloud/Self-hosted | Free/Paid | 5 | `mem0ai` | Server-side LLM extraction + OSS mode |
 | **Hindsight** | Cloud/Local | Free/Paid | 3 | `hindsight-client` | Knowledge graph + reflect synthesis |
 | **Holographic** | Local | Free | 2 | None | HRR algebra + trust scoring |
-| **Obsidian** | Local (your vault) | Free | 1 | None | Memory as human-readable Markdown in your Obsidian graph |
+| **Obsidian** | Local (your vault) | Free | 1 | None | Memory as human-readable Markdown in your Obsidian graph, FTS5-indexed |
 | **RetainDB** | Cloud | $20/mo | 5 | `requests` | Delta compression |
 | **ByteRover** | Local/Cloud | Free/Paid | 3 | `brv` CLI | Pre-compression extraction |
 | **Supermemory** | Cloud | Paid | 4 | `supermemory` | Context fencing + session graph ingest + multi-container |
