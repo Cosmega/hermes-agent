@@ -37,7 +37,7 @@ MyVault/
     ├── Memory.md            # mirrored built-in MEMORY.md entries
     ├── User Profile.md      # mirrored built-in USER.md entries
     ├── Notes/               # notes the agent creates via the obsidian tool
-    │   └── Project Odysseus.md
+    │   └── Project Iris.md
     └── Sessions/            # end-of-session conversation logs
         └── 2026-07-02 1430 a1b2c3.md
 ```

@@ -11,10 +11,10 @@ def vault(tmp_path):
     (v / ".obsidian").mkdir(parents=True)
     (v / "Journal").mkdir()
     (v / "Journal" / "2026-07-01.md").write_text(
-        "# Daily\nWorked on the odysseus rollout with Alice.\n", encoding="utf-8"
+        "# Daily\nWorked on the iris rollout with Alice.\n", encoding="utf-8"
     )
     (v / "Projects.md").write_text(
-        "# Projects\n- odysseus: self-hosted hermes stack\n- other stuff\n",
+        "# Projects\n- iris: self-hosted hermes stack\n- other stuff\n",
         encoding="utf-8",
     )
     return v
@@ -73,7 +73,7 @@ def test_register_entry_point():
 
 def test_search_finds_notes_across_vault(provider):
     result = json.loads(
-        provider.handle_tool_call("obsidian", {"action": "search", "query": "odysseus"})
+        provider.handle_tool_call("obsidian", {"action": "search", "query": "iris"})
     )
     assert result["count"] >= 2
     paths = {hit["path"] for hit in result["results"]}
@@ -92,7 +92,7 @@ def test_read_note_with_and_without_md_extension(provider):
         result = json.loads(
             provider.handle_tool_call("obsidian", {"action": "read", "path": path})
         )
-        assert "odysseus" in result["content"]
+        assert "iris" in result["content"]
 
 
 def test_read_missing_note_errors(provider):
@@ -120,14 +120,14 @@ def test_write_creates_note_with_frontmatter(provider, vault):
             "obsidian",
             {
                 "action": "write",
-                "title": "Odysseus Plan",
+                "title": "Iris Plan",
                 "content": "Self-hosted stack. See [[Projects]].",
                 "tags": ["hermes/plan"],
             },
         )
     )
     assert result["status"] == "written"
-    note = vault / "Hermes" / "Notes" / "Odysseus Plan.md"
+    note = vault / "Hermes" / "Notes" / "Iris Plan.md"
     text = note.read_text(encoding="utf-8")
     assert text.startswith("---")
     assert "tags: [hermes/plan]" in text
@@ -191,9 +191,9 @@ def test_read_rejects_path_escaping_vault(provider, tmp_path):
 
 
 def test_prefetch_returns_relevant_snippets(provider):
-    context = provider.prefetch("what is the odysseus project?")
+    context = provider.prefetch("what is the iris project?")
     assert "Obsidian Memory" in context
-    assert "odysseus" in context.lower()
+    assert "iris" in context.lower()
 
 
 def test_prefetch_empty_query_and_no_match(provider):
@@ -202,7 +202,7 @@ def test_prefetch_empty_query_and_no_match(provider):
 
 
 def test_queue_prefetch_caches_result(provider):
-    provider.queue_prefetch("odysseus rollout")
+    provider.queue_prefetch("iris rollout")
     import time
 
     for _ in range(50):
@@ -210,7 +210,7 @@ def test_queue_prefetch_caches_result(provider):
             if provider._prefetch_result:
                 break
         time.sleep(0.05)
-    assert "odysseus" in provider.prefetch("odysseus rollout").lower()
+    assert "iris" in provider.prefetch("iris rollout").lower()
 
 
 def test_system_prompt_block_mentions_folder(provider):
@@ -253,14 +253,14 @@ def test_non_primary_context_never_writes(vault):
 
 def test_session_note_written_on_session_end(provider, vault):
     provider.on_session_end([
-        {"role": "user", "content": "Set up the odysseus stack"},
+        {"role": "user", "content": "Set up the iris stack"},
         {"role": "assistant", "content": "Done — Ollama is running locally."},
         {"role": "user", "content": [{"type": "text", "text": "non-string ignored"}]},
     ])
     notes = list((vault / "Hermes" / "Sessions").glob("*.md"))
     assert len(notes) == 1
     text = notes[0].read_text(encoding="utf-8")
-    assert "odysseus stack" in text
+    assert "iris stack" in text
     assert "Ollama" in text
     assert "tags: [hermes/session]" in text
 

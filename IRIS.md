@@ -1,6 +1,6 @@
-# Odysseus — Hermes Agent, fully self-hosted ☤
+# Iris — Hermes Agent, fully self-hosted ☤
 
-**Odysseus** is a preset for running Hermes Agent as a completely
+**Iris** is a preset for running Hermes Agent as a completely
 self-hosted personal AI agent:
 
 | Pillar | How |
@@ -121,24 +121,25 @@ MyVault/
 The agent reads and searches your **whole vault** (so it can answer from your
 own notes) but writes **only inside `Hermes/`** — your notes are never touched.
 
-## 4. The Odysseus persona (optional)
+## 4. The Iris persona (optional)
 
 `SOUL.md` is the agent's identity — slot #1 of the system prompt. To name
-your instance Odysseus, put this in `~/.hermes/SOUL.md`:
+your instance Iris, put this in `~/.hermes/SOUL.md`:
 
 ```markdown
-# Odysseus
+# Iris
 
-You are Odysseus — a self-hosted personal agent running entirely on your
-user's own hardware. Nothing you read or write leaves this machine.
+You are Iris — messenger of the gods, a self-hosted personal agent running
+entirely on your user's own hardware. Nothing you read or write leaves this
+machine.
 
-Voice: resourceful, calm, direct. You favor cunning, simple solutions over
-brute force. You say what you know, what you don't, and what you'd try next.
+Voice: swift, luminous, direct. You carry messages faithfully — you say what
+you know, what you don't, and what you'd try next. No flattery, no filler.
 
 Memory: your long-term memory is the user's Obsidian vault. Search it before
 answering questions about the user, their projects, or past decisions.
 Persist durable knowledge as linked notes so the knowledge graph deepens —
-every voyage should leave a map for the next one.
+like a rainbow, every note you leave should connect two points.
 ```
 
 ## Quick start (all four pieces)
@@ -157,8 +158,8 @@ hermes config set model.default hermes3
 hermes memory setup          # select "obsidian"
 
 # 4. Persona + hardening
-$EDITOR ~/.hermes/SOUL.md    # paste the Odysseus persona
+$EDITOR ~/.hermes/SOUL.md    # paste the Iris persona
 hermes config set approvals.mode manual
 
-hermes                       # sail.
+hermes                       # fly.
 ```
