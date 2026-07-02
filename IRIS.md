@@ -210,6 +210,26 @@ Persist durable knowledge as linked notes so the knowledge graph deepens —
 like a rainbow, every note you leave should connect two points.
 ```
 
+## 5. Iris Web — a minimal localhost UI (optional)
+
+If you'd rather talk to Iris in a browser than a terminal, a deliberately
+simple web UI ships in [`apps/iris-web/`](apps/iris-web/README.md) — one
+static page + one stdlib Python server, no build step, no npm:
+
+```bash
+# ~/.hermes/.env
+API_SERVER_ENABLED=true
+API_SERVER_KEY=pick-something-random
+
+hermes gateway                      # terminal 1 — agent + API server
+python3 apps/iris-web/serve.py     # terminal 2 → http://127.0.0.1:8643
+```
+
+Streaming replies, live tool-activity lines, markdown rendering,
+conversation kept in your browser. The API key stays server-side; both
+servers bind to 127.0.0.1 only. (The full-featured dashboard remains
+available via `hermes dashboard`.)
+
 ## Manual setup (the script, unrolled)
 
 ```bash
