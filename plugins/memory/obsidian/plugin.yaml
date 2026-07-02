@@ -1,0 +1,6 @@
+name: obsidian
+version: 0.1.0
+description: "Obsidian vault memory — persists agent memory as plain Markdown notes in a local Obsidian vault. Local-first, no server, no API key."
+hooks:
+  - on_memory_write
+  - on_session_end
