@@ -73,7 +73,10 @@ def _hermes_version() -> str:
     try:
         from importlib.metadata import version
 
-        return version("hermes-agent")
+        try:
+            return version("iris-agent")
+        except Exception:
+            return version("hermes-agent")
     except Exception:
         pass
     try:

@@ -1,12 +1,12 @@
 ---
 sidebar_position: 4
 title: "Memory Providers"
-description: "External memory provider plugins — Honcho, OpenViking, Mem0, Hindsight, Holographic, RetainDB, ByteRover, Supermemory"
+description: "External memory provider plugins — Honcho, OpenViking, Mem0, Hindsight, Holographic, Obsidian, RetainDB, ByteRover, Supermemory"
 ---
 
 # Memory Providers
 
-Hermes Agent ships with 8 external memory provider plugins that give the agent persistent, cross-session knowledge beyond the built-in MEMORY.md and USER.md. Only **one** external provider can be active at a time — the built-in memory is always active alongside it.
+Hermes Agent ships with 9 external memory provider plugins that give the agent persistent, cross-session knowledge beyond the built-in MEMORY.md and USER.md. Only **one** external provider can be active at a time — the built-in memory is always active alongside it.
 
 ## Quick Start
 
@@ -22,7 +22,7 @@ Or set manually in `~/.hermes/config.yaml`:
 
 ```yaml
 memory:
-  provider: openviking   # or honcho, mem0, hindsight, holographic, retaindb, byterover, supermemory
+  provider: openviking   # or honcho, mem0, hindsight, holographic, obsidian, retaindb, byterover, supermemory
 ```
 
 ## How It Works
@@ -452,6 +452,53 @@ hermes config set memory.provider holographic
 
 ---
 
+### Obsidian
+
+Persists agent memory as plain Markdown notes inside a local [Obsidian](https://obsidian.md) vault. Local-first: no server, no API key, no network calls. Memory is human-readable, editable in Obsidian, and syncs however your vault already syncs (Obsidian Sync, Syncthing, iCloud, git).
+
+| | |
+|---|---|
+| **Best for** | Obsidian users who want the agent's memory inside their existing vault |
+| **Requires** | Nothing — just a vault folder on disk |
+| **Data storage** | Your Obsidian vault (local Markdown files) |
+| **Cost** | Free |
+
+**Tools (1):** `obsidian` (6 actions: search, read, list, write, append, delete)
+
+**Setup:**
+```bash
+hermes memory setup    # select "obsidian", point it at your vault
+# Or manually:
+hermes config set memory.provider obsidian
+```
+
+**Config:** `config.yaml` under `plugins.obsidian-memory`
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `vault_path` | — (required) | Path to your Obsidian vault |
+| `folder` | `Iris` | Subfolder inside the vault the agent writes into |
+| `session_notes` | `true` | Write a conversation note at session end |
+| `session_summary` | `auto` | `auto` = LLM summary with digest fallback, `off` = digest only |
+| `daily_notes` | `false` | Opt-in: append a session section to your Obsidian daily note |
+| `daily_notes_folder` | `""` | Vault-relative daily notes folder (`""` = vault root) |
+| `daily_note_format` | `%Y-%m-%d` | Daily note filename date format |
+| `auto_link` | `true` | Wikilink existing note titles in agent-written notes |
+
+**Key features:**
+- **Write scoping** — the agent reads and searches the whole vault, but can only write/delete inside its own subfolder (default `Iris/`). Your notes are never modified; the single opt-in exception is the `daily_notes` session section.
+- **FTS5 search index** — incremental SQLite full-text index stored under `$HERMES_HOME` (never inside the vault); mtime-based reindex of changed files only, agent writes indexed immediately, bounded-scan fallback if FTS5 is unavailable
+- **Exact memory mirroring** — every MEMORY.md / USER.md write (`add`, `replace`, `remove`) regenerates `Iris/Memory.md` / `Iris/User Profile.md` from the built-in store's state, so the vault mirror never drifts
+- **LLM session summaries** — session notes lead with a 3–6 bullet summary produced by the auxiliary client, with a transcript-digest fallback when the model is unreachable
+- **Daily-note integration** — session summaries can append to your daily note, wikilinked to the full session note
+- **Auto-linking** — mentions of existing note titles in agent-written content become `[[wikilinks]]` (conservative: whole words, no code fences, capped)
+- **Atomic writes** — temp-file + rename so Obsidian Sync/Syncthing/iCloud never see half-written notes
+- **Prefetch** — background search injects the top 3 relevant note snippets before each turn
+
+See the [plugin README](https://github.com/NousResearch/hermes-agent/blob/main/plugins/memory/obsidian/README.md).
+
+---
+
 ### RetainDB
 
 Cloud memory API with hybrid search (Vector + BM25 + Reranking), 7 memory types, and delta compression.
@@ -598,6 +645,7 @@ hermes memory setup
 | **Mem0** | Cloud/Self-hosted | Free/Paid | 5 | `mem0ai` | Server-side LLM extraction + OSS mode |
 | **Hindsight** | Cloud/Local | Free/Paid | 3 | `hindsight-client` | Knowledge graph + reflect synthesis |
 | **Holographic** | Local | Free | 2 | None | HRR algebra + trust scoring |
+| **Obsidian** | Local (your vault) | Free | 1 | None | Memory as human-readable Markdown in your Obsidian graph, FTS5-indexed |
 | **RetainDB** | Cloud | $20/mo | 5 | `requests` | Delta compression |
 | **ByteRover** | Local/Cloud | Free/Paid | 3 | `brv` CLI | Pre-compression extraction |
 | **Supermemory** | Cloud | Paid | 4 | `supermemory` | Context fencing + session graph ingest + multi-container |
@@ -608,6 +656,7 @@ hermes memory setup
 Each provider's data is isolated per [profile](/user-guide/profiles):
 
 - **Local storage providers** (Holographic, ByteRover) use `$HERMES_HOME/` paths which differ per profile
+- **Vault providers** (Obsidian) read `vault_path` from each profile's `config.yaml` — point profiles at different vaults (or different `folder` values) to isolate them
 - **Config file providers** (Honcho, Mem0, Hindsight, Supermemory) store config in `$HERMES_HOME/` so each profile has its own credentials
 - **Cloud providers** (RetainDB) auto-derive profile-scoped project names
 - **Env var providers** (OpenViking) are configured via each profile's `.env` file
