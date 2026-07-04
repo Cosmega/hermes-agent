@@ -1,5 +1,15 @@
 # Iris ✦
 
+```text
+██╗██████╗ ██╗███████╗
+██║██╔══██╗██║██╔════╝
+██║██████╔╝██║███████╗
+██║██╔══██╗██║╚════██║
+██║██║  ██║██║███████║
+╚═╝╚═╝  ╚═╝╚═╝╚══════╝
+        the rainbow messenger  ✦
+```
+
 **Your self-hosted AI agent.** Iris runs entirely on your own hardware:
 local inference (no API keys, no per-token billing), memory that lives as
 Markdown notes in your Obsidian vault, and conversations that never leave
