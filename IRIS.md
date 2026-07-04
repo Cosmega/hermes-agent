@@ -25,7 +25,7 @@ plus whatever model you pull into Ollama.
 From nothing to a running agent, using only this repo:
 
 ```bash
-git clone https://github.com/Cosmega/hermes-agent.git iris && cd iris
+git clone https://github.com/Cosmega/iris-agent.git iris && cd iris
 scripts/install-iris.sh                              # venv + `iris` command
 scripts/setup-iris.sh --vault ~/Documents/MyVault    # model + memory + persona
 iris    # fly.
@@ -243,7 +243,7 @@ available via `iris dashboard`.)
 
 ```bash
 # 1. Install from THIS repo (no external installer)
-git clone https://github.com/Cosmega/hermes-agent.git iris && cd iris
+git clone https://github.com/Cosmega/iris-agent.git iris && cd iris
 scripts/install-iris.sh
 
 # 2. Local model
