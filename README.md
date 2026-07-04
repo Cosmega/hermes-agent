@@ -27,7 +27,7 @@ installers. Nothing depends on any other repository.
 ## Install (one command)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Cosmega/hermes-agent/main/scripts/install-iris.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Cosmega/iris-agent/main/scripts/install-iris.sh | bash
 ```
 
 That clones this repo to `~/iris`, sets up the Python environment, and puts

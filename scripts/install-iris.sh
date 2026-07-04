@@ -6,14 +6,14 @@
 # is the single source of truth for code, updates, and docs.
 #
 # One-command install (no clone needed — it clones for you, into ~/iris):
-#   curl -fsSL https://raw.githubusercontent.com/Cosmega/hermes-agent/main/scripts/install-iris.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Cosmega/iris-agent/main/scripts/install-iris.sh | bash
 #
 # Or from a clone of your repo:
-#   git clone https://github.com/Cosmega/hermes-agent.git iris && cd iris
+#   git clone https://github.com/Cosmega/iris-agent.git iris && cd iris
 #   scripts/install-iris.sh
 #
 # Env overrides for the one-command mode:
-#   IRIS_REPO_URL   repo to clone (default: https://github.com/Cosmega/hermes-agent.git)
+#   IRIS_REPO_URL   repo to clone (default: https://github.com/Cosmega/iris-agent.git)
 #   IRIS_DIR        where to clone (default: ~/iris)
 #
 # What it does — and nothing else:
@@ -48,7 +48,7 @@ if [ -n "$SCRIPT_SOURCE" ] && [ -f "$SCRIPT_SOURCE" ] \
    && [ -f "$(cd "$(dirname "$SCRIPT_SOURCE")/.." && pwd)/pyproject.toml" ]; then
   REPO_ROOT="$(cd "$(dirname "$SCRIPT_SOURCE")/.." && pwd)"
 else
-  REPO_URL="${IRIS_REPO_URL:-https://github.com/Cosmega/hermes-agent.git}"
+  REPO_URL="${IRIS_REPO_URL:-https://github.com/Cosmega/iris-agent.git}"
   REPO_ROOT="${IRIS_DIR:-$HOME/iris}"
   if [ -d "$REPO_ROOT/.git" ]; then
     echo "• existing clone at $REPO_ROOT — pulling latest…"
