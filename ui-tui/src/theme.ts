@@ -234,13 +234,13 @@ function normalizeAnsiForeground(color: string): string {
 // ── Defaults ─────────────────────────────────────────────────────────
 
 const BRAND: ThemeBrand = {
-  name: 'Hermes Agent',
-  icon: '⚕',
+  name: 'Iris',
+  icon: '✦',
   prompt: '❯',
   welcome: 'Type your message or /help for commands.',
-  goodbye: 'Goodbye! ⚕',
+  goodbye: 'Until next flight! ✦',
   tool: '┊',
-  helpHeader: '(^_^)? Commands'
+  helpHeader: '(✦) Commands'
 }
 
 const cleanPromptSymbol = (s: string | undefined, fallback: string) => {
