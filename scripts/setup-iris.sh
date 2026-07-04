@@ -50,9 +50,13 @@ run() {
   fi
 }
 
-if ! command -v hermes >/dev/null 2>&1; then
-  echo "error: 'hermes' not found. Install it first:" >&2
-  echo "  curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash" >&2
+if command -v iris >/dev/null 2>&1; then
+  CLI=iris
+elif command -v hermes >/dev/null 2>&1; then
+  CLI=hermes
+else
+  echo "error: 'iris' not found. Install from this repo first:" >&2
+  echo "  scripts/install-iris.sh" >&2
   exit 1
 fi
 
@@ -72,14 +76,14 @@ else
     echo "  Install it later: curl -fsSL https://ollama.com/install.sh | sh"
   fi
   echo "• model: ${MODEL} via ${BASE_URL}"
-  run hermes config set model.provider ollama
-  run hermes config set model.base_url "$BASE_URL"
-  run hermes config set model.default "$MODEL"
+  run "$CLI" config set model.provider ollama
+  run "$CLI" config set model.base_url "$BASE_URL"
+  run "$CLI" config set model.default "$MODEL"
 fi
 
 # 2. Hardening ---------------------------------------------------------------
 echo "• approvals: manual (human-in-the-loop for dangerous commands)"
-run hermes config set approvals.mode manual
+run "$CLI" config set approvals.mode manual
 
 # 3. Obsidian memory ----------------------------------------------------------
 if [ -n "$VAULT" ]; then
@@ -89,12 +93,12 @@ if [ -n "$VAULT" ]; then
     exit 1
   fi
   echo "• memory: obsidian → ${VAULT_EXPANDED} (folder: ${FOLDER}/)"
-  run hermes config set memory.provider obsidian
-  run hermes config set "plugins.obsidian-memory.vault_path" "$VAULT_EXPANDED"
-  run hermes config set "plugins.obsidian-memory.folder" "$FOLDER"
+  run "$CLI" config set memory.provider obsidian
+  run "$CLI" config set "plugins.obsidian-memory.vault_path" "$VAULT_EXPANDED"
+  run "$CLI" config set "plugins.obsidian-memory.folder" "$FOLDER"
 else
   echo "⚠ no --vault given — skipping Obsidian memory."
-  echo "  Enable later: hermes memory setup   (select 'obsidian')"
+  echo "  Enable later: $CLI memory setup   (select 'obsidian')"
 fi
 
 # 4. Persona ------------------------------------------------------------------
@@ -129,4 +133,4 @@ EOF
 fi
 
 echo "────────────────────────────────────────────────────"
-echo "Done. Start your agent with:  hermes"
+echo "Done. Start your agent with:  $CLI"

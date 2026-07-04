@@ -11,15 +11,25 @@ self-hosted personal AI agent:
 
 No cloud service sees your prompts, your history, or your notes.
 
+**Standalone by design:** this repository is the whole project. The engine,
+the plugins, the web UI, the docs (`website/docs/`), the installers — all of
+it lives here. Installing, running, and updating never touch any other
+repository: `scripts/install-iris.sh` installs from your clone, and
+`iris update` pulls from *your* origin. The only outside downloads are the
+Python toolchain (uv) and the PyPI packages declared in `pyproject.toml` —
+plus whatever model you pull into Ollama.
+
 ---
 
-## Quick start (one command)
+## Quick start
 
-With Hermes installed and an Obsidian vault on disk:
+From nothing to a running agent, using only this repo:
 
 ```bash
-scripts/setup-iris.sh --vault ~/Documents/MyVault
-hermes    # fly.
+git clone https://github.com/Cosmega/hermes-agent.git iris && cd iris
+scripts/install-iris.sh                              # venv + `iris` command
+scripts/setup-iris.sh --vault ~/Documents/MyVault    # model + memory + persona
+iris    # fly.
 ```
 
 The script pulls a local model through Ollama, points Hermes at it, enables
@@ -93,7 +103,7 @@ model:
                                    # from what /v1/models reports
 ```
 
-Switch models any time with `hermes model` or `/model` in a conversation.
+Switch models any time with `iris model` or `/model` in a conversation.
 
 ## 2. Secure conversations
 
@@ -107,7 +117,7 @@ approvals:
   mode: "manual"       # human-in-the-loop for dangerous commands (manual | smart | off)
 ```
 
-For messaging access, run `hermes gateway setup` and:
+For messaging access, run `iris gateway setup` and:
 
 - **Allowlist users** — only your own account can talk to the bot.
 - **DM pairing** — unknown senders must present a pairing code.
@@ -139,17 +149,17 @@ storage layer underneath rather than per-file:
 - **VPS / always-on box:** put `~/.hermes/` (and the vault) on an encrypted
   directory, e.g. [gocryptfs](https://nuetzlich.net/gocryptfs/):
   `gocryptfs ~/.hermes.enc ~/.hermes` — mounted at boot, opaque at rest.
-- `hermes backup` archives can be piped through `age` before leaving the
-  machine: `hermes backup && age -p backup.tar.gz > backup.tar.gz.age`.
+- `iris backup` archives can be piped through `age` before leaving the
+  machine: `iris backup && age -p backup.tar.gz > backup.tar.gz.age`.
 
-Full reference: [Security guide](https://hermes-agent.nousresearch.com/docs/user-guide/security).
+Full reference: the in-repo [Security guide](website/docs/user-guide/security.md).
 
 ## 3. Memory in Obsidian
 
 Activate the bundled [`obsidian` memory provider](plugins/memory/obsidian/README.md):
 
 ```bash
-hermes memory setup      # select "obsidian", point it at your vault
+iris memory setup        # select "obsidian", point it at your vault
 ```
 
 Or manually:
@@ -221,33 +231,47 @@ static page + one stdlib Python server, no build step, no npm:
 API_SERVER_ENABLED=true
 API_SERVER_KEY=pick-something-random
 
-hermes gateway                      # terminal 1 — agent + API server
+iris gateway                        # terminal 1 — agent + API server
 python3 apps/iris-web/serve.py     # terminal 2 → http://127.0.0.1:8643
 ```
 
 Streaming replies, live tool-activity lines, markdown rendering,
 conversation kept in your browser. The API key stays server-side; both
 servers bind to 127.0.0.1 only. (The full-featured dashboard remains
-available via `hermes dashboard`.)
+available via `iris dashboard`.)
 
-## Manual setup (the script, unrolled)
+## Manual setup (the scripts, unrolled)
 
 ```bash
-# 1. Install Hermes
-curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
+# 1. Install from THIS repo (no external installer)
+git clone https://github.com/Cosmega/hermes-agent.git iris && cd iris
+scripts/install-iris.sh
 
 # 2. Local model
 ollama pull hermes3
-hermes config set model.provider ollama
-hermes config set model.base_url http://127.0.0.1:11434/v1
-hermes config set model.default hermes3
+iris config set model.provider ollama
+iris config set model.base_url http://127.0.0.1:11434/v1
+iris config set model.default hermes3
 
 # 3. Obsidian memory
-hermes memory setup          # select "obsidian"
+iris memory setup            # select "obsidian"
 
 # 4. Persona + hardening
 $EDITOR ~/.hermes/SOUL.md    # paste the Iris persona
-hermes config set approvals.mode manual
+iris config set approvals.mode manual
 
-hermes                       # fly.
+iris                         # fly.
 ```
+
+## Updating
+
+Your clone is the source of truth. To update:
+
+```bash
+cd iris
+git pull                                        # from YOUR origin
+uv pip install --python .venv/bin/python -e ".[all]"   # only if deps changed
+```
+
+`iris update` also works — it pulls from your repo's origin remote (the
+installer marks the checkout so it never proposes linking any other repo).
