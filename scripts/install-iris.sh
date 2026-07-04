@@ -5,9 +5,16 @@
 # this installs Iris entirely from the repo you are holding: your clone
 # is the single source of truth for code, updates, and docs.
 #
-# Usage (from a clone of your repo):
+# One-command install (no clone needed — it clones for you, into ~/iris):
+#   curl -fsSL https://raw.githubusercontent.com/Cosmega/hermes-agent/main/scripts/install-iris.sh | bash
+#
+# Or from a clone of your repo:
 #   git clone https://github.com/Cosmega/hermes-agent.git iris && cd iris
 #   scripts/install-iris.sh
+#
+# Env overrides for the one-command mode:
+#   IRIS_REPO_URL   repo to clone (default: https://github.com/Cosmega/hermes-agent.git)
+#   IRIS_DIR        where to clone (default: ~/iris)
 #
 # What it does — and nothing else:
 #   1. Installs the uv toolchain if missing (the only non-repo download,
@@ -34,12 +41,28 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$REPO_ROOT"
-if [ ! -f "$REPO_ROOT/pyproject.toml" ]; then
-  echo "error: run this from a clone of the repo (pyproject.toml not found)" >&2
-  exit 1
+# Resolve the repo root. When piped from curl there is no script file on
+# disk, so clone the repo and re-exec the installer from inside it.
+SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
+if [ -n "$SCRIPT_SOURCE" ] && [ -f "$SCRIPT_SOURCE" ] \
+   && [ -f "$(cd "$(dirname "$SCRIPT_SOURCE")/.." && pwd)/pyproject.toml" ]; then
+  REPO_ROOT="$(cd "$(dirname "$SCRIPT_SOURCE")/.." && pwd)"
+else
+  REPO_URL="${IRIS_REPO_URL:-https://github.com/Cosmega/hermes-agent.git}"
+  REPO_ROOT="${IRIS_DIR:-$HOME/iris}"
+  if [ -d "$REPO_ROOT/.git" ]; then
+    echo "• existing clone at $REPO_ROOT — pulling latest…"
+    git -C "$REPO_ROOT" pull --ff-only || true
+  else
+    echo "• cloning $REPO_URL → $REPO_ROOT…"
+    git clone "$REPO_URL" "$REPO_ROOT"
+  fi
+  ARGS=()
+  [ "$LITE" = 1 ] && ARGS+=(--lite)
+  [ "$AGENT_HOME" != "${HERMES_HOME:-$HOME/.hermes}" ] && ARGS+=(--home "$AGENT_HOME")
+  exec bash "$REPO_ROOT/scripts/install-iris.sh" ${ARGS[@]+"${ARGS[@]}"}
 fi
+cd "$REPO_ROOT"
 
 echo "── Iris standalone install ─────────────────────────"
 echo "• repo:  $REPO_ROOT"

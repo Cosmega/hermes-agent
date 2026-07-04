@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Iris launcher — same engine, the agent's own name.
+Iris CLI launcher.
 
-Behaves exactly like the `hermes` command, including subcommands such as
+Runs the full Iris command line, including subcommands such as
 `gateway`, `cron`, and `doctor`.
 """
 

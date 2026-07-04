@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # setup-iris.sh — one-command setup for the Iris preset (see IRIS.md).
 #
-# Configures an already-installed Hermes Agent as "Iris": a fully
+# Configures an installed Iris as a fully
 # self-hosted agent with local inference (Ollama), hardened approvals,
 # and Obsidian-vault memory.
 #

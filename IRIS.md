@@ -1,7 +1,6 @@
-# Iris — Hermes Agent, fully self-hosted ☤
+# Iris — fully self-hosted ✦
 
-**Iris** is a preset for running Hermes Agent as a completely
-self-hosted personal AI agent:
+**Iris** is a completely self-hosted personal AI agent:
 
 | Pillar | How |
 |--------|-----|
@@ -32,7 +31,7 @@ scripts/setup-iris.sh --vault ~/Documents/MyVault    # model + memory + persona
 iris    # fly.
 ```
 
-The script pulls a local model through Ollama, points Hermes at it, enables
+The setup script pulls a local model through Ollama, points Iris at it, enables
 manual approval for dangerous commands, activates Obsidian memory, and writes
 the Iris persona to `SOUL.md` (never overwriting an existing one). Re-run it
 any time — it's idempotent. `--dry-run` shows what it would do; `--skip-model`
@@ -42,7 +41,7 @@ keeps your current provider. The sections below explain each piece.
 
 ## 1. Self-hosted inference (unlimited credits)
 
-Pick one local server. Hermes speaks to any OpenAI-compatible endpoint.
+Pick one local server. Iris speaks to any OpenAI-compatible endpoint.
 
 ### Which model fits your hardware?
 

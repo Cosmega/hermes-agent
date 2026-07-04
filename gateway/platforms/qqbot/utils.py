@@ -17,7 +17,10 @@ def _get_hermes_version() -> str:
     """Return the hermes-agent package version, or 'dev' if unavailable."""
     try:
         from importlib.metadata import version
-        return version("hermes-agent")
+        try:
+            return version("iris-agent")
+        except Exception:
+            return version("hermes-agent")
     except Exception:
         return "dev"
 

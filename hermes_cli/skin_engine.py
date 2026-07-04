@@ -162,6 +162,57 @@ class SkinConfig:
 # =============================================================================
 
 _BUILTIN_SKINS: Dict[str, Dict[str, Any]] = {
+    "iris": {
+        "name": "iris",
+        "description": "Iris — the rainbow messenger (project default)",
+        "colors": {
+            "banner_border": "#8B7CF6",
+            "banner_title": "#F472B6",
+            "banner_accent": "#38BDF8",
+            "banner_dim": "#5A5A75",
+            "banner_text": "#E8E8EE",
+            "ui_accent": "#8B7CF6",
+            "ui_label": "#38BDF8",
+            "ui_ok": "#4ADE80",
+            "ui_error": "#EF5350",
+            "ui_warn": "#FB923C",
+            "prompt": "#E8E8EE",
+            "input_rule": "#8B7CF6",
+            "response_border": "#8B7CF6",
+            "status_bar_bg": "#16161E",
+            "status_bar_text": "#C9C9D6",
+            "status_bar_strong": "#8B7CF6",
+            "status_bar_dim": "#5A5A75",
+            "status_bar_good": "#4ADE80",
+            "status_bar_warn": "#FACC15",
+            "status_bar_bad": "#FB923C",
+            "status_bar_critical": "#EF5350",
+            "session_label": "#38BDF8",
+            "session_border": "#5A5A75",
+        },
+        "spinner": {
+            "waiting_faces": ["(✦)", "(❋)", "(☾)", "(⟡)", "(✧)"],
+            "thinking_faces": ["(✦)", "(⟡)", "(❋)", "(⌁)", "(✧)"],
+            "thinking_verbs": [
+                "carrying word", "tracing the arc", "crossing the sky",
+                "weaving light", "bridging", "gliding", "unfurling wings",
+            ],
+            "wings": [
+                ["⟪✦", "✦⟫"],
+                ["⟪⟡", "⟡⟫"],
+                ["⟪☽", "☾⟫"],
+            ],
+        },
+        "branding": {
+            "agent_name": "Iris",
+            "welcome": "Welcome to Iris! Type your message or /help for commands.",
+            "goodbye": "Until next flight! ✦",
+            "response_label": " ✦ Iris ",
+            "prompt_symbol": "❯",
+            "help_header": "(✦) Available Commands",
+        },
+        "tool_prefix": "┊",
+    },
     "default": {
         "name": "default",
         "description": "Classic Hermes — gold and kawaii",
@@ -650,7 +701,7 @@ _BUILTIN_SKINS: Dict[str, Dict[str, Any]] = {
 # =============================================================================
 
 _active_skin: Optional[SkinConfig] = None
-_active_skin_name: str = "default"
+_active_skin_name: str = "iris"
 
 
 def _skins_dir() -> Path:
@@ -795,11 +846,11 @@ def init_skin_from_config(config: dict) -> None:
     display = config.get("display") or {}
     if not isinstance(display, dict):
         display = {}
-    skin_name = display.get("skin", "default")
+    skin_name = display.get("skin", "iris")
     if isinstance(skin_name, str) and skin_name.strip():
         set_active_skin(skin_name.strip())
     else:
-        set_active_skin("default")
+        set_active_skin("iris")
 
 
 # =============================================================================
