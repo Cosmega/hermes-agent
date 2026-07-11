@@ -101,6 +101,49 @@ One tool, `obsidian`, with six actions:
   ≥ 4 chars). Disable with `auto_link: false`.
 - **Cron/subagents:** non-primary agent contexts never write to the vault.
 
+## Iris Inbox — the vault as a command surface
+
+Write a note anywhere in your vault, tag it `#iris/task`, and Iris runs it
+and appends the answer to the note itself. Your sync (Obsidian Sync,
+Syncthing, iCloud) is the transport — no chat app, no open port.
+
+```markdown
+---
+tags: [iris/task]
+---
+Compare the three frameworks in [[SSG Research]] and recommend one.
+```
+
+Start the watcher:
+
+```bash
+iris obsidian inbox              # watch loop (default: every 30 s)
+iris obsidian inbox --once       # single pass — cron/systemd friendly
+iris obsidian status             # config + recent activity
+```
+
+Iris drives a state machine in the note's frontmatter
+(`iris-status: running → done | failed | blocked`) and appends its answer
+under `## ✦ Iris — <date>` — your own text is never modified. Failed notes
+carry a retry hint (remove `iris-status` to re-run).
+
+**Recurring tasks:** add `iris-cron: "0 7 * * *"` to the frontmatter — the
+note re-runs on schedule and each run appends a new dated section. Your
+daily briefing, defined in a note.
+
+**Safety:** note text is untrusted input that becomes a prompt, so every
+candidate is screened with the shared threat-pattern library (a hit marks
+the note `blocked` instead of executing); executions are rate-limited
+(`inbox_max_per_hour`, default 6); `inbox_folder` can restrict scanning to
+one subfolder; and each task runs as a normal one-shot agent session, so
+your `approvals` policy applies to dangerous commands.
+
+| Config key | Default | Description |
+|-----------|---------|-------------|
+| `inbox_folder` | `""` | Vault-relative scan scope (`""` = whole vault) |
+| `inbox_max_per_hour` | `6` | Max task executions per hour |
+| `inbox_task_timeout` | `900` | Seconds per task |
+
 ## Backup
 
 The vault is intentionally **not** included in `hermes backup` — it's your

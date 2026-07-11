@@ -56,6 +56,10 @@ persona, updating: **[IRIS.md](IRIS.md)**.
   reads and searches your whole vault, writes only in its own `Iris/`
   folder, mirrors everything it remembers as plain Markdown, and summarizes
   each session into your notes.
+- **Iris Inbox** — tag any note `#iris/task` and Iris runs it and appends
+  the answer to the note itself (`iris obsidian inbox`). Your vault sync is
+  the transport: drop tasks from your phone, read results over coffee.
+  `iris-cron:` frontmatter makes a note a recurring job.
 - **A closed learning loop** — Iris creates skills from experience,
   improves them during use, and searches its own past conversations.
 - **Scheduled automations** — built-in cron with delivery to any platform.
