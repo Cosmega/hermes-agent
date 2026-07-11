@@ -198,7 +198,40 @@ MyVault/
 - Notes Iris writes auto-link to existing notes in your vault, so the graph
   view fills in by itself.
 
-## 4. The Iris persona (optional)
+## 4. Iris Inbox — command Iris from any note
+
+The vault isn't just Iris's memory — it's a **command surface**. Write a
+note anywhere in your vault (from Obsidian on your phone, offline, in the
+train), tag it `#iris/task`, and let your sync carry it home:
+
+```markdown
+---
+tags: [iris/task]
+---
+Compare the three frameworks in [[SSG Research]] and recommend one
+for the portfolio site.
+```
+
+On your machine, the watcher picks it up, runs the task with Iris's full
+toolset, and appends the answer to the note itself under `## ✦ Iris`:
+
+```bash
+iris obsidian inbox            # watch loop
+iris obsidian inbox --once     # single pass (cron/systemd friendly)
+```
+
+Drop four tasks in the evening; Iris works overnight on your local model
+(free); read the results over coffee. Add `iris-cron: "0 7 * * *"` to a
+note's frontmatter and it becomes a recurring job — your daily briefing,
+defined in a note.
+
+No new app, no open port: the command channel is Markdown files moved by
+the sync you already trust. Notes are screened against prompt-injection
+patterns before execution, runs are rate-limited, and your `approvals`
+policy still gates dangerous commands. Details in the
+[plugin README](plugins/memory/obsidian/README.md#iris-inbox--the-vault-as-a-command-surface).
+
+## 5. The Iris persona (optional)
 
 `SOUL.md` is the agent's identity — slot #1 of the system prompt. The setup
 script installs it for you; to do it by hand, put this in `~/.hermes/SOUL.md`:
@@ -219,7 +252,7 @@ Persist durable knowledge as linked notes so the knowledge graph deepens —
 like a rainbow, every note you leave should connect two points.
 ```
 
-## 5. Iris Web — a minimal localhost UI (optional)
+## 6. Iris Web — a minimal localhost UI (optional)
 
 If you'd rather talk to Iris in a browser than a terminal, a deliberately
 simple web UI ships in [`apps/iris-web/`](apps/iris-web/README.md) — one
