@@ -141,8 +141,56 @@ your `approvals` policy applies to dangerous commands.
 | Config key | Default | Description |
 |-----------|---------|-------------|
 | `inbox_folder` | `""` | Vault-relative scan scope (`""` = whole vault) |
-| `inbox_max_per_hour` | `6` | Max task executions per hour |
+| `inbox_max_per_hour` | `6` | Max executions per hour (shared with Drop) |
 | `inbox_task_timeout` | `900` | Seconds per task |
+
+## La Dépose — a drop folder where anything becomes knowledge
+
+Throw any file into `<folder>/Drop/` — a PDF, a screenshot, an article, a
+voice memo, a text snippet. Iris reads it with the right tool (vision for
+images, transcription for audio, plain reading for text/PDF), writes a
+wikilinked summary note into `<folder>/Notes/`, archives the original into
+`Drop/Archive/`, and logs the run in `Drop/Journal.md`. Pair it with your
+phone's "share → synced folder" and your entire incoming stream files
+itself.
+
+```bash
+iris obsidian drop --once      # single pass (cron-friendly)
+iris obsidian drop             # watch loop
+```
+
+Failures leave the file in place with a one-hour cooldown and give up
+after 3 attempts (journaled), so one broken PDF can't wedge the queue.
+Drop executions draw from the same `inbox_max_per_hour` budget as Inbox.
+`drop_folder` (default `"<folder>/Drop"`) relocates the folder.
+
+## Le Jardinier — Iris tends the vault while you sleep
+
+A nightly pass where Iris reviews recently modified notes, hunts for
+connections, contradictions, and dropped threads, and writes a dated
+**morning briefing** to `<folder>/Briefings/YYYY-MM-DD.md`: wikilink pairs
+worth connecting, stale facts, gentle reminders of things gone quiet, and
+up to three copy-ready `#iris/task` suggestions. It never modifies your
+notes — the briefing is its only output.
+
+```bash
+iris obsidian gardener             # runs at most once per day
+iris obsidian gardener --force     # run again (briefing gets versioned)
+```
+
+`gardener_days` (default 3) sets the lookback window; `gardener_max_notes`
+(default 40) caps the context. A failed session is not marked as done, so
+the next scheduled attempt retries.
+
+## One daemon for everything
+
+```bash
+iris obsidian watch --gardener-hour 5
+```
+
+runs the Inbox scan and the Drop folder every 30 s and fires the Gardener
+once a day at the given hour. Put it in a systemd unit or just leave it in
+a tmux pane.
 
 ## Backup
 

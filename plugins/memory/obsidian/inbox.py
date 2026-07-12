@@ -101,6 +101,49 @@ def _atomic_write(path: Path, text: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Shared state file: execution ledger (rate limit) + module timestamps
+# ---------------------------------------------------------------------------
+
+def _read_state(state_path: Optional[Path]) -> Dict:
+    if not state_path or not state_path.exists():
+        return {}
+    try:
+        return json.loads(state_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _write_state(state_path: Optional[Path], updates: Dict) -> None:
+    if not state_path:
+        return
+    state = _read_state(state_path)
+    state.update(updates)
+    try:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write(state_path, json.dumps(state))
+    except OSError:
+        pass
+
+
+def load_ledger(state_path: Optional[Path]) -> List[float]:
+    try:
+        return [float(t) for t in _read_state(state_path).get("runs", [])]
+    except Exception:
+        return []
+
+
+def record_run(state_path: Optional[Path], ledger: List[float]) -> None:
+    ledger.append(time.time())
+    _write_state(state_path, {"runs": ledger[-100:]})
+
+
+def allowance(ledger: List[float], max_per_hour: int) -> int:
+    cutoff = time.time() - 3600
+    recent = [t for t in ledger if t > cutoff]
+    return max(0, max_per_hour - len(recent))
+
+
+# ---------------------------------------------------------------------------
 # Note protocol
 # ---------------------------------------------------------------------------
 
@@ -276,32 +319,16 @@ class InboxWatcher:
                 found.append(path)
         return found
 
-    # -- Rate limiting -----------------------------------------------------------
+    # -- Rate limiting (shared with drop.py — one budget for all vault automation)
 
     def _load_ledger(self) -> List[float]:
-        p = self.config.state_path
-        if not p or not p.exists():
-            return []
-        try:
-            data = json.loads(p.read_text(encoding="utf-8"))
-            return [float(t) for t in data.get("runs", [])]
-        except Exception:
-            return []
+        return load_ledger(self.config.state_path)
 
     def _record_run(self, ledger: List[float]) -> None:
-        p = self.config.state_path
-        ledger.append(time.time())
-        if p:
-            try:
-                p.parent.mkdir(parents=True, exist_ok=True)
-                _atomic_write(p, json.dumps({"runs": ledger[-100:]}))
-            except OSError:
-                pass
+        record_run(self.config.state_path, ledger)
 
     def _allowance(self, ledger: List[float]) -> int:
-        cutoff = time.time() - 3600
-        recent = [t for t in ledger if t > cutoff]
-        return max(0, self.config.max_per_hour - len(recent))
+        return allowance(ledger, self.config.max_per_hour)
 
     # -- Note updates --------------------------------------------------------------
 
