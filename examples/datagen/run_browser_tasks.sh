@@ -16,7 +16,7 @@
 #
 # Usage:
 #   cd ~/.hermes/hermes-agent
-#   bash datagen-config-examples/run_browser_tasks.sh
+#   bash examples/datagen/run_browser_tasks.sh
 #
 # Output: data/browser_tasks_example/trajectories.jsonl
 # =============================================================================

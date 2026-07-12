@@ -72,6 +72,31 @@ persona, updating: **[IRIS.md](IRIS.md)**.
 - **Runs anywhere** — a $5 VPS, a gaming PC, a Mac; Docker/SSH/serverless
   terminal backends included.
 
+## Repository layout
+
+The engine is large — here's the map. **Bold** entries are where Iris-specific
+things live; the rest is the agent engine (vendored in full, so the project
+depends on no other repository).
+
+| Path | What it is |
+|------|------------|
+| **`IRIS.md`** | The complete Iris guide — start here |
+| **`plugins/memory/obsidian/`** | Obsidian memory + Inbox + Drop + Gardener |
+| **`apps/iris-web/`** | The minimal localhost web UI |
+| **`scripts/install-iris.sh`**, **`scripts/setup-iris.sh`** | One-command install & setup |
+| `agent/` | Agent runtime: conversation loop, memory manager, providers |
+| `gateway/` | Messaging gateway (Telegram, Discord, Signal, API server…) |
+| `tools/` | The agent's 40+ tools |
+| `hermes_cli/` | CLI internals (banner, skins, config, commands) |
+| `plugins/`, `skills/`, `optional-skills/`, `optional-mcps/` | Extension points |
+| `cli.py`, `run_agent.py`, `hermes_*.py`, `model_tools.py`, `toolsets.py` | Engine top-level modules (load-bearing — imported everywhere) |
+| `tests/` | The test suite |
+| `website/docs/` | Full in-repo documentation |
+| `docs/` | Internal design & planning notes |
+| `examples/` | Sample configs (datagen, browser tasks) |
+| `web/`, `ui-tui/`, `apps/desktop/` | The full dashboard, TUI, and desktop app |
+| `docker/`, `packaging/`, `nix/` | Deployment & packaging |
+
 ## Docs
 
 Everything is in-repo under [`website/docs/`](website/docs/):
