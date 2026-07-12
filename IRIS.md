@@ -231,6 +231,23 @@ patterns before execution, runs are rate-limited, and your `approvals`
 policy still gates dangerous commands. Details in the
 [plugin README](plugins/memory/obsidian/README.md#iris-inbox--the-vault-as-a-command-surface).
 
+Two companions complete the loop:
+
+- **La Dépose** — throw any file (PDF, screenshot, article, voice memo)
+  into `Iris/Drop/`; Iris reads it with the right tool and files a
+  wikilinked summary note, archiving the original. Your phone's
+  "share → synced folder" becomes a knowledge pipeline.
+- **Le Jardinier** — a nightly pass over recent notes that writes a
+  morning briefing (`Iris/Briefings/`): connections worth making,
+  contradictions, dropped threads, and copy-ready task suggestions.
+  Free thinking on idle local compute.
+
+One daemon runs all three:
+
+```bash
+iris obsidian watch --gardener-hour 5
+```
+
 ## 5. The Iris persona (optional)
 
 `SOUL.md` is the agent's identity — slot #1 of the system prompt. The setup
